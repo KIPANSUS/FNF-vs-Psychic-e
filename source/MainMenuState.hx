@@ -20,32 +20,37 @@ import lime.app.Application;
 import Achievements;
 import editors.MasterEditorMenu;
 import flixel.input.keyboard.FlxKey;
+import flixel.util.FlxColor;
+import flixel.util.FlxTimer;
 
 using StringTools;
 
 class MainMenuState extends MusicBeatState
 {
-	public static var psychEngineVersion:String = '0.5.1'; //This is also used for Discord RPC
+	public static var psychEngineVersion:String = '0.5.1';
 	public static var curSelected:Int = 0;
 
 	var menuItems:FlxTypedGroup<FlxSprite>;
 	private var camGame:FlxCamera;
 	private var camAchievement:FlxCamera;
 	
+	public static var MENUDESAT_MAX:Int = 3;
+	
 	var optionShit:Array<String> = [
 		'story_mode',
 		'freeplay',
-		#if MODS_ALLOWED 'mods', #end
 		#if ACHIEVEMENTS_ALLOWED 'awards', #end
 		'credits',
 		#if !switch 'donate', #end
 		'options'
 	];
 
-	var magenta:FlxSprite;
+	var colorLayer:FlxSprite;
+	var colorsArray:Array<Int> = [];
 	var camFollow:FlxObject;
 	var camFollowPos:FlxObject;
 	var debugKeys:Array<FlxKey>;
+	var swagShader:ColorSwap;
 
 	override function create()
 	{
@@ -54,6 +59,7 @@ class MainMenuState extends MusicBeatState
 		DiscordClient.changePresence("In the Menus", null);
 		#end
 
+		WeekData.setDirectoryFromWeek();
 		debugKeys = ClientPrefs.copyKey(ClientPrefs.keyBinds.get('debug_1'));
 
 		camGame = new FlxCamera();
@@ -68,31 +74,27 @@ class MainMenuState extends MusicBeatState
 		transOut = FlxTransitionableState.defaultTransOut;
 
 		persistentUpdate = persistentDraw = true;
+		var leStrings:Array<String> = CoolUtil.coolTextFile(Paths.txt('menuColors'));
+		for (i in 0...leStrings.length) {
+			colorsArray.push(Std.parseInt(leStrings[i]));
+		}
 
-		var yScroll:Float = Math.max(0.25 - (0.05 * (optionShit.length - 4)), 0.1);
-		var bg:FlxSprite = new FlxSprite(-80).loadGraphic(Paths.image('menuBG'));
-		bg.scrollFactor.set(0, yScroll);
-		bg.setGraphicSize(Std.int(bg.width * 1.175));
-		bg.updateHitbox();
-		bg.screenCenter();
-		bg.antialiasing = ClientPrefs.globalAntialiasing;
-		add(bg);
+		swagShader = new ColorSwap();
+		var randomNum:Int = FlxG.random.int(1, MENUDESAT_MAX);
+		colorLayer = new FlxSprite(-80).loadGraphic(Paths.image('menuDesat-' + randomNum));
+		colorLayer.scrollFactor.set(0, 0.15);
+		colorLayer.setGraphicSize(Std.int(FlxG.width * 1.175), Std.int(FlxG.height * 1.175));
+		colorLayer.updateHitbox();
+		colorLayer.screenCenter();
+		colorLayer.color = colorsArray[0];
+		colorLayer.antialiasing = ClientPrefs.globalAntialiasing;
+		add(colorLayer);
+		colorLayer.shader = swagShader.shader;
 
 		camFollow = new FlxObject(0, 0, 1, 1);
 		camFollowPos = new FlxObject(0, 0, 1, 1);
 		add(camFollow);
 		add(camFollowPos);
-
-		magenta = new FlxSprite(-80).loadGraphic(Paths.image('menuDesat'));
-		magenta.scrollFactor.set(0, yScroll);
-		magenta.setGraphicSize(Std.int(magenta.width * 1.175));
-		magenta.updateHitbox();
-		magenta.screenCenter();
-		magenta.visible = false;
-		magenta.antialiasing = ClientPrefs.globalAntialiasing;
-		magenta.color = 0xFFfd719b;
-		add(magenta);
-		// magenta.scrollFactor.set();
 
 		menuItems = new FlxTypedGroup<FlxSprite>();
 		add(menuItems);
@@ -125,13 +127,17 @@ class MainMenuState extends MusicBeatState
 
 		FlxG.camera.follow(camFollowPos, null, 1);
 
-		var versionShit:FlxText = new FlxText(12, FlxG.height - 44, 0, "Psych Engine v" + psychEngineVersion, 12);
+		var versionShit:FlxText = new FlxText(12, FlxG.height - 70, 0, "Psych Engine v" + psychEngineVersion, 16);
 		versionShit.scrollFactor.set();
 		versionShit.setFormat("VCR OSD Mono", 16, FlxColor.WHITE, LEFT, FlxTextBorderStyle.OUTLINE, FlxColor.BLACK);
 		add(versionShit);
-		var versionShit:FlxText = new FlxText(12, FlxG.height - 24, 0, "Friday Night Funkin' v" + Application.current.meta.get('version'), 12);
+		var versionShit:FlxText = new FlxText(12, FlxG.height - 50, 0, "Friday Night Funkin' v0.2.7", 16);
 		versionShit.scrollFactor.set();
 		versionShit.setFormat("VCR OSD Mono", 16, FlxColor.WHITE, LEFT, FlxTextBorderStyle.OUTLINE, FlxColor.BLACK);
+		add(versionShit);
+		var versionShit:FlxText = new FlxText(12, FlxG.height - 30, 0, "Mind Games Mod v" + Application.current.meta.get('version'), 20);
+		versionShit.scrollFactor.set();
+		versionShit.setFormat("VCR OSD Mono", 20, FlxColor.WHITE, LEFT, FlxTextBorderStyle.OUTLINE, FlxColor.BLACK);
 		add(versionShit);
 
 		// NG.core.calls.event.logEvent('swag').send();
@@ -149,10 +155,6 @@ class MainMenuState extends MusicBeatState
 				ClientPrefs.saveSettings();
 			}
 		}
-		#end
-
-                #if MOBILE_CONTROLS_ALLOWED
-		addVirtualPad(UP_DOWN, A_B_7);
 		#end
 
 		super.create();
@@ -211,7 +213,13 @@ class MainMenuState extends MusicBeatState
 					selectedSomethin = true;
 					FlxG.sound.play(Paths.sound('confirmMenu'));
 
-					if(ClientPrefs.flashing) FlxFlicker.flicker(magenta, 1.1, 0.15, false);
+					if(ClientPrefs.flashing) {
+						new FlxTimer().start(0.15, function(tmr:FlxTimer) {
+							colorLayer.color = colorsArray[tmr.elapsedLoops % 2];
+							swagShader.saturation = (tmr.elapsedLoops % 2) * 0.45;
+							swagShader.brightness = (tmr.elapsedLoops % 2) * 0.70;
+						}, 6);
+					}
 
 					menuItems.forEach(function(spr:FlxSprite)
 					{
@@ -237,10 +245,6 @@ class MainMenuState extends MusicBeatState
 										MusicBeatState.switchState(new StoryMenuState());
 									case 'freeplay':
 										MusicBeatState.switchState(new FreeplayState());
-									#if MODS_ALLOWED
-									case 'mods':
-										MusicBeatState.switchState(new ModsMenuState());
-									#end
 									case 'awards':
 										MusicBeatState.switchState(new AchievementsMenuState());
 									case 'credits':
@@ -253,11 +257,13 @@ class MainMenuState extends MusicBeatState
 					});
 				}
 			}
-			else if (FlxG.keys.anyJustPressed(debugKeys)#if MOBILE_CONTROLS_ALLOWED || _virtualpad.button7.justPressed #end)
+			#if desktop
+			else if (FlxG.keys.anyJustPressed(debugKeys))
 			{
 				selectedSomethin = true;
 				MusicBeatState.switchState(new MasterEditorMenu());
 			}
+			#end
 		}
 
 		super.update(elapsed);
